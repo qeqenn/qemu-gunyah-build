@@ -1,15 +1,14 @@
 diff --git a/meson.build b/meson.build
-index 69c1bb8..fc6302b 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -81,6 +81,7 @@ prog_python = import('python').find_installation('python3')
+@@ -55,6 +55,7 @@ endif
  
  with_host_windows = host_machine.system() == 'windows'
  with_host_darwin = host_machine.system() == 'darwin'
 +with_host_android = cc.has_define('__ANDROID__')
  
- not_found = dependency('', required: false)
- gbm_dep = not_found
+ warnings = [
+    '-Werror=enum-int-mismatch',
 @@ -295,7 +296,7 @@ have_glx = false
  
  if with_egl

@@ -5,7 +5,6 @@ BuildDir="$(pwd)/build"
 Prefix="$BuildDir/sysroot"
 SysLib="$Prefix/lib"
 SysBin="$Prefix/bin"
-JniLibDir="$Prefix/jniLibs"
 QvmDir="qvm"
 QvmLib="$QvmDir/lib"
 FwSrc="$Prefix/share/qemu"
@@ -37,13 +36,12 @@ copyLib "$SysLib/libpixman-1.so"      "$QvmLib/libpixman-1.so"
 [ -f "$SysLib/libffi.so" ]           && copyLib "$SysLib/libffi.so"           "$QvmLib/libffi.so"
 [ -f "$SysLib/libepoxy.so" ]         && copyLib "$SysLib/libepoxy.so"         "$QvmLib/libepoxy.so"
 [ -f "$SysLib/libvirglrenderer.so" ] && copyLib "$SysLib/libvirglrenderer.so" "$QvmLib/libvirglrenderer.so"
-[ -f "$SysLib/libusb-1.0.so" ]      && copyLib "$SysLib/libusb-1.0.so"      "$QvmLib/libusb-1.0.so"
-soDir="$JniLibDir/libqemu-system-aarch64.so"
-if [ -f "$soDir" ]; then
-  copyLib "$soDir" "$QvmLib/libqemu-system-aarch64.so"
-else
-  echo "跳过缺失 $soDir"
-fi
+[ -f "$SysLib/libSDL2.so" ]          && copyLib "$SysLib/libSDL2.so"          "$QvmLib/libSDL2.so"
+[ -f "$SysLib/libX11.so" ]           && copyLib "$SysLib/libX11.so"           "$QvmLib/libX11.so"
+[ -f "$SysLib/libXext.so" ]          && copyLib "$SysLib/libXext.so"          "$QvmLib/libXext.so"
+[ -f "$SysLib/libxcb.so" ]           && copyLib "$SysLib/libxcb.so"           "$QvmLib/libxcb.so"
+[ -f "$SysLib/libXau.so" ]           && copyLib "$SysLib/libXau.so"           "$QvmLib/libXau.so"
+[ -f "$SysLib/libXdmcp.so" ]         && copyLib "$SysLib/libXdmcp.so"         "$QvmLib/libXdmcp.so"
 exe="$SysBin/qemu-system-aarch64"
 if [ -f "$exe" ]; then
   $Strip --strip-all "$exe" -o "$QvmDir/qemu-system-aarch64"
@@ -74,18 +72,16 @@ if [ -f "$QvmLib/libvirglrenderer.so" ]; then
   rn libglib-2.0.so.0    libglib-2.0.so    "$QvmLib/libvirglrenderer.so"
   rn libintl.so.8        libintl.so        "$QvmLib/libvirglrenderer.so"
 fi
-so="$QvmLib/libqemu-system-aarch64.so"
-if [ -f "$so" ]; then
-  echo "修补 NEEDED 条目 $(basename "$so")"
-  rn libslirp.so.0         libslirp.so         "$so"
-  rn libgio-2.0.so.0       libgio-2.0.so       "$so"
-  rn libgobject-2.0.so.0   libgobject-2.0.so   "$so"
-  rn libglib-2.0.so.0      libglib-2.0.so      "$so"
-  rn libgmodule-2.0.so.0   libgmodule-2.0.so   "$so"
-  rn libintl.so.8          libintl.so          "$so"
-  rn libepoxy.so.0         libepoxy.so         "$so"
-  rn libvirglrenderer.so.1 libvirglrenderer.so "$so"
-  rn libusb-1.0.so.0       libusb-1.0.so       "$so"
+if [ -f "$QvmLib/libSDL2.so" ]; then
+  rn libX11.so.6   libX11.so   "$QvmLib/libSDL2.so"
+  rn libXext.so.6  libXext.so  "$QvmLib/libSDL2.so"
+fi
+if [ -f "$QvmLib/libX11.so" ]; then
+  rn libxcb.so.1 libxcb.so "$QvmLib/libX11.so"
+fi
+if [ -f "$QvmLib/libxcb.so" ]; then
+  rn libXau.so.6   libXau.so   "$QvmLib/libxcb.so"
+  rn libXdmcp.so.6 libXdmcp.so "$QvmLib/libxcb.so"
 fi
 exe="$QvmDir/qemu-system-aarch64"
 if [ -f "$exe" ]; then
@@ -98,7 +94,10 @@ if [ -f "$exe" ]; then
   rn libintl.so.8        libintl.so        "$exe"
   rn libepoxy.so.0       libepoxy.so       "$exe"
   rn libvirglrenderer.so.1 libvirglrenderer.so "$exe"
-  rn libusb-1.0.so.0     libusb-1.0.so     "$exe"
+  rn libSDL2-2.0.so.0    libSDL2.so        "$exe"
+  rn libX11.so.6         libX11.so         "$exe"
+  rn libXext.so.6        libXext.so        "$exe"
+  rn libxcb.so.1         libxcb.so         "$exe"
 fi
 exe="$QvmDir/qemu-img"
 if [ -f "$exe" ]; then
@@ -126,5 +125,6 @@ if [ -d "$FwSrc" ]; then
   echo "固件已复制至 $QvmFw"
 fi
 echo "产物已存至 $QvmDir"
-tar --numeric-owner -cp qvm/* | xz -9e --arm64 --lzma2=dict=64MB,nice=273 -T 1 > qvm.xz
+tar --numeric-owner -cp qvm/* | xz > qvm.xz
 echo "产物压缩至 qvm.xz"
+adb push qvm.xz /data/local/tmp/als/app/qvm

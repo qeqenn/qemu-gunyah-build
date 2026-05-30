@@ -7,10 +7,10 @@ BuildDir="$(pwd)/build"
 Prefix="$BuildDir/sysroot"
 OutDir="$BuildDir/out/qemu"
 SrcDir="$BuildDir/src"
-QemuVersion="10.0.2"
-QemuGitUrl="https://github.com/wasdwasd0105/qemu-android-gunyah.git"
-QemuGitRef="qemu-10.0.2"
-QemuSrc="$SrcDir/qemu-${QemuVersion}"
+QvmVersion="10.0.2"
+QvmGitUrl="https://github.com/AnyLaySys/qemu-gunyah.git"
+QvmGitRef="10.0.2"
+QvmSrc="$SrcDir/qemu-gunyah-${QvmVersion}"
 LibucontextGitUrl="https://github.com/kaniini/libucontext.git"
 LibucontextSrc="$BuildDir/libucontext"
 HostOS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -29,8 +29,8 @@ export RANLIB="$Toolchain/bin/llvm-ranlib"
 export STRIP="$Toolchain/bin/llvm-strip"
 export OBJCOPY="$Toolchain/bin/llvm-objcopy"
 export LD="$Toolchain/bin/ld.lld"
-export PKG_CONFIG_PATH=""
-export PKG_CONFIG_LIBDIR="$Prefix/lib/pkgconfig"
+export PKG_CONFIG_PATH="$Prefix/lib/pkgconfig:$Prefix/share/pkgconfig"
+export PKG_CONFIG_LIBDIR="$Prefix/lib/pkgconfig:$Prefix/share/pkgconfig"
 export CFLAGS="-fPIC -fvisibility=default -mbranch-protection=none -ftls-model=global-dynamic -Wno-error -I$Prefix/include -DSDL_MAIN_HANDLED -I$Prefix/include/pixman-1 -DANDROID_PLATFORM="android-${ApiLevel}" "
 export CPPFLAGS="$CFLAGS"
 export LDFLAGS="-L$Prefix/lib -Wl,--export-dynamic -lucontext -lEGL -lGLESv2"
@@ -42,16 +42,16 @@ fi
 ScriptDir="$(cd "$(dirname "$0")" && pwd)"
 SlirpPatch="$ScriptDir/patch/slirp_android_dns.patch"
 EglPatch="$ScriptDir/patch/qemu_android_egl.patch"
-if [ ! -d "$QemuSrc" ]; then
-  echo "克隆 QEMU 源码 ($QemuGitUrl) ref=$QemuGitRef 到 $QemuSrc"
-  git clone --depth 1 --branch "$QemuGitRef" "$QemuGitUrl" "$QemuSrc"
+if [ ! -d "$QvmSrc" ]; then
+  echo "克隆 QEMU 源码 ($QvmGitUrl) ref=$QvmGitRef 到 $QvmSrc"
+  git clone --depth 1 --branch "$QvmGitRef" "$QvmGitUrl" "$QvmSrc"
 else
-  echo "使用已有的 QEMU 源码目录: $QemuSrc"
+  echo "使用已有的 QEMU 源码目录: $QvmSrc"
 fi
 if [ -f "$EglPatch" ]; then
   echo "应用 Android EGL 补丁"
-  if git -C "$QemuSrc" apply --check "$EglPatch" 2>/dev/null; then
-    git -C "$QemuSrc" apply "$EglPatch"
+  if git -C "$QvmSrc" apply --check "$EglPatch" 2>/dev/null; then
+    git -C "$QvmSrc" apply "$EglPatch"
     echo "Android EGL 补丁应用成功"
   else
     echo "Android EGL 补丁已存在或不需要，跳过"
@@ -83,9 +83,10 @@ else
   echo "libucontext 已存在，跳过"
 fi
 BitsInstalled="$Prefix/include/libucontext/bits.h"
-mkdir -p "$Prefix/include/libucontext"
-echo "生成 freestanding bits.h for aarch64"
-cat > "$BitsInstalled" <<'GEN_BITS_H'
+if [ ! -f "$BitsInstalled" ]; then
+  mkdir -p "$Prefix/include/libucontext"
+  echo "生成 freestanding bits.h for aarch64"
+  cat > "$BitsInstalled" <<'GEN_BITS_H'
 #ifndef LIBUCONTEXT_BITS_H
 #define LIBUCONTEXT_BITS_H
 #include <stddef.h>
@@ -115,26 +116,53 @@ typedef struct libucontext_ucontext {
 } libucontext_ucontext_t;
 #endif
 GEN_BITS_H
-echo "bits.h 生成完毕"
+  echo "bits.h 生成完毕"
+else
+  echo "bits.h 已存在，跳过"
+fi
 LibucontextH="$Prefix/include/libucontext/libucontext.h"
-if [ -f "$LibucontextH" ] && grep -q 'void (\*)()' "$LibucontextH"; then
+if [ -f "$LibucontextH" ] && grep -q 'void (\*)()' "$LibucontextH" && [ -w "$LibucontextH" ]; then
   echo "修复 libucontext.h 函数原型"
   sed -i.bak 's|void (\*)()|void (*)(void)|g' "$LibucontextH"
   rm -f "$LibucontextH.bak"
   echo "libucontext.h 已修复"
+elif [ -f "$LibucontextH" ] && grep -q 'void (\*)()' "$LibucontextH"; then
+  echo "libucontext.h 需要修复，但文件是只读的，跳过"
+else
+  echo "libucontext.h 已正常，不需要修复"
 fi
-rm -rf "$OutDir"
-mkdir -p "$OutDir"
+if [ -d "$OutDir" ]; then
+  echo "尝试清理输出目录 $OutDir"
+  rm -rf "$OutDir" 2>/dev/null || true
+fi
+if [ ! -d "$OutDir" ]; then
+  mkdir -p "$OutDir"
+else
+  echo "输出目录已存在，继续使用"
+fi
 mkdir -p "$Prefix/lib" "$Prefix/bin"
 WrapPc="$OutDir/android-pkg-config"
-cat > "$WrapPc" <<'EOF'
+if [ ! -f "$WrapPc" ]; then
+  TempWrapPc="$(mktemp -t android-pkg-config.XXXXXXXXXX)"
+  cat > "$TempWrapPc" <<'EOF'
 #!/usr/bin/env bash
 exec pkg-config "$@"
 EOF
-chmod +x "$WrapPc"
-export PKG_CONFIG="$WrapPc"
+  chmod +x "$TempWrapPc"
+  cp -f "$TempWrapPc" "$WrapPc" 2>/dev/null || true
+  rm -f "$TempWrapPc"
+  if [ -f "$WrapPc" ]; then
+    export PKG_CONFIG="$WrapPc"
+  else
+    echo "无法创建 android-pkg-config，将使用系统 pkg-config"
+    export PKG_CONFIG="pkg-config"
+  fi
+else
+  echo "android-pkg-config 已存在"
+  export PKG_CONFIG="$WrapPc"
+fi
 echo "pkg-config 检查 (Android 交叉编译依赖在 $Prefix)"
-for lib in glib-2.0 pixman-1 epoxy virglrenderer libusb-1.0; do
+for lib in glib-2.0 pixman-1 epoxy virglrenderer sdl2 x11 gtk+-3.0 gtk+-x11-3.0; do
   echo "$lib: $(pkg-config --modversion $lib 2>/dev/null || echo '未找到')"
 done
 if pkg-config --exists pixman-1; then
@@ -142,8 +170,14 @@ if pkg-config --exists pixman-1; then
 else
   PixmanOpt="--disable-pixman"
 fi
+DisplayOpts=(--disable-gtk -Dgtk=disabled -Dvnc=disabled -Dvnc_jpeg=disabled -Dvnc_sasl=disabled)
+if pkg-config --exists sdl2 x11; then
+  DisplayOpts+=(--enable-sdl -Dsdl=enabled)
+else
+  DisplayOpts+=(--disable-sdl -Dsdl=disabled)
+fi
 cd "$OutDir"
-"$QemuSrc/configure" --prefix="$Prefix" --host-cc="$HostCc" --cross-prefix="${TargetTriple}-" --cc="$CC" --cxx="$CXX" --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS" --with-coroutine=ucontext --disable-docs --disable-guest-agent --disable-sdl --disable-gtk --disable-cocoa --disable-curses --disable-capstone --disable-gnutls --disable-gcrypt --enable-libusb --disable-usb-redir --audio-drv-list=[] --enable-slirp --disable-vhost-user --disable-virtfs -Dcoroutine_pool=false -Dopengl=enabled -Dvirglrenderer=enabled -Dvnc=enabled -Dvnc_jpeg=disabled -Dvnc_sasl=disabled -Dgunyah=enabled $PixmanOpt --target-list="aarch64-softmmu"
+"$QvmSrc/configure" --prefix="$Prefix" --host-cc="$HostCc" --cross-prefix="${TargetTriple}-" --cc="$CC" --cxx="$CXX" --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS" --with-coroutine=ucontext --disable-docs --disable-guest-agent --disable-cocoa --disable-curses --disable-capstone --disable-gnutls --disable-gcrypt --disable-plugins --disable-libusb --disable-usb-redir --disable-tpm --disable-vhost-kernel --disable-vhost-net --disable-vhost-vdpa --audio-drv-list=[] --enable-slirp --disable-vhost-user --disable-virtfs -Dcoroutine_pool=false -Dopengl=enabled -Dvirglrenderer=enabled -Dgunyah=enabled -Dcoroutine_backend=sigaltstack -Dwhpx=disabled -Dhvf=disabled -Dnvmm=disabled -Dxen=disabled -Dxen_pci_passthrough=disabled "$PixmanOpt" "${DisplayOpts[@]}" --target-list="aarch64-softmmu"
 Meson="$OutDir/pyvenv/bin/meson"
 if [ ! -x "$Meson" ]; then
   Meson="$(command -v meson)"
@@ -154,8 +188,8 @@ if [ ! -x "$Meson" ]; then
 fi
 if [ -f "$SlirpPatch" ]; then
   echo "应用 SLIRP Android DNS 补丁"
-  if git -C "$QemuSrc/subprojects/slirp" apply --check "$SlirpPatch" 2>/dev/null; then
-    git -C "$QemuSrc/subprojects/slirp" apply "$SlirpPatch"
+  if git -C "$QvmSrc/subprojects/slirp" apply --check "$SlirpPatch" 2>/dev/null; then
+    git -C "$QvmSrc/subprojects/slirp" apply "$SlirpPatch"
     echo "SLIRP 补丁应用成功"
   else
     echo "SLIRP 补丁已存在或不需要，跳过"
@@ -165,7 +199,16 @@ fi
   qemu-system-aarch64 \
   qemu-img \
   -j "$NCpu"
-"$Meson" install -C "$OutDir"
+mkdir -p "$Prefix/bin" "$Prefix/share/qemu/keymaps"
+cp -f "$OutDir/qemu-system-aarch64" "$Prefix/bin/qemu-system-aarch64"
+cp -f "$OutDir/qemu-img" "$Prefix/bin/qemu-img"
+if [ -f "$OutDir/subprojects/slirp/libslirp.so.0.4.0" ]; then
+  cp -Lf "$OutDir/subprojects/slirp/libslirp.so.0.4.0" "$Prefix/lib/libslirp.so.0.4.0"
+  ln -sf libslirp.so.0.4.0 "$Prefix/lib/libslirp.so.0"
+  ln -sf libslirp.so.0 "$Prefix/lib/libslirp.so"
+fi
+[ -f "$QvmSrc/pc-bios/efi-virtio.rom" ] && cp -f "$QvmSrc/pc-bios/efi-virtio.rom" "$Prefix/share/qemu/efi-virtio.rom"
+[ -f "$QvmSrc/pc-bios/keymaps/en-us" ] && cp -f "$QvmSrc/pc-bios/keymaps/en-us" "$Prefix/share/qemu/keymaps/en-us"
 echo "编译安装完成"
 echo "二进制文件安装到: $Prefix/bin"
 ls -l "$Prefix/bin"/qemu-system-* 2>/dev/null || true
