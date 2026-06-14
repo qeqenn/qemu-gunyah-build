@@ -14,7 +14,9 @@ jobs:
     steps:
     - name: Checkout source
       uses: actions/checkout@v2
-      
+
+    - name: apt update
+      run: sudo apt update
         
     - name: run 1.sh
       run: sudo ./1.sh
