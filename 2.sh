@@ -3,6 +3,7 @@ set -euo pipefail
 apiLevel="36"
 baseUrl="https://packages.termux.dev/apt/termux-main/pool/main"
 buildDir="$(pwd)/build"
+hostOs=$(uname -s | tr '[:upper:]' '[:lower:]')
 libucontextGitUrl="https://github.com/kaniini/libucontext.git"
 nCpu="$(nproc || sysctl -n hw.ncpu)"
 ndkPath="$HOME/android-ndk-r30-beta1"
@@ -23,10 +24,10 @@ qvmSrc="$srcDir/qemu-gunyah-main"
 sdlConfigH="$srcDir/SDL2/include/SDL_config_android.h"
 sdlSrc="$srcDir/SDL2"
 sdlXinput2H="$srcDir/SDL2/src/video/x11/SDL_x11xinput2.h"
+slirpPatch="$scriptDir/patch/slirp.patch"
 sysBin="$prefix/bin"
 sysLib="$prefix/lib"
 wrapPc="$outDir/android-pkg-config"
-hostOs=$(uname -s | tr '[:upper:]' '[:lower:]')
 case "$hostOs" in
   darwin) hostTag="darwin-x86_64" ;;
   linux) hostTag="linux-x86_64" ;;
@@ -281,8 +282,7 @@ cd "$outDir"
 "$qvmSrc/configure" --prefix="$prefix" --host-cc="$hostCC" --cross-prefix="${targetTriple}-" --cc="$CC" --cxx="$CXX" --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS -lX11 -lXext -lxcb -lXau -lXdmcp -lXrender -lX11-xcb -landroid-shmem" --with-coroutine=ucontext --disable-docs --disable-guest-agent --disable-cocoa --disable-curses --disable-capstone --disable-gnutls --disable-gcrypt --disable-plugins --disable-libusb --disable-usb-redir --disable-tpm --disable-vhost-kernel --disable-vhost-net --disable-vhost-vdpa --audio-drv-list=[] --enable-slirp --disable-vhost-user --disable-virtfs --disable-tcg --disable-pie -Dtcg=disabled -Dcoroutine_pool=false -Dvirglrenderer=disabled -Ddbus_display=disabled -Dgunyah=enabled -Dcoroutine_backend=sigaltstack -Dwhpx=disabled -Dhvf=disabled -Dnvmm=disabled -Dxen=disabled -Dxen_pci_passthrough=disabled -Dreplication=disabled -Dbochs=disabled -Ddmg=disabled -Dqcow1=disabled -Dvdi=disabled -Dvhdx=disabled -Dvmdk=disabled -Dvpc=disabled -Dvvfat=disabled -Dqed=disabled -Dparallels=disabled -Dzstd=disabled -Dl2tpv3=disabled -Dattr=disabled -Dhv_balloon=disabled -Dlibvduse=disabled -Dvduse_blk_export=disabled "$pixmanOpt" "${displayOpts[@]}" --target-list="aarch64-softmmu"
 meson="$outDir/pyvenv/bin/meson"
 if [ ! -x "$meson" ]; then meson="$(command -v meson)"; fi
-ninja="$(command -v ninja || true)"
-if [ -n "$ninja" ]; then "$ninja" -C "$outDir" -t clean qemu-system-aarch64 qemu-img; fi
+if [ -f "$slirpPatch" ] && git -C "$qvmSrc/subprojects/slirp" apply --check "$slirpPatch"; then git -C "$qvmSrc/subprojects/slirp" apply "$slirpPatch"; fi
 "$meson" compile -C "$outDir" qemu-system-aarch64 qemu-img -j "$nCpu"
 mkdir -p "$prefix/bin" "$prefix/share/qemu/keymaps"
 cp -f "$outDir/qemu-system-aarch64" "$prefix/bin/qemu-system-aarch64"
