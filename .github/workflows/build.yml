@@ -27,7 +27,7 @@ jobs:
     - name: 拉取
       run: |
         git clone --depth 1 --single-branch --no-tags --filter=blob:none --recurse-submodules --shallow-submodules --also-filter-submodules --jobs $(nproc) https://github.com/AnyLaySys/qemu-gunyah.git $SOURCE_DIR
-        mkdir -p build/src/qemu-gzvm-main/pyvenv
+        mkdir -p $SOURCE_DIR/pyvenv
         wget https://raw.githubusercontent.com/qemu/qemu/master/pyvenv/meson.build -O $SOURCE_DIR/pyvenv/meson.build
         mkdir -p $SOURCE_DIR/subprojects/packagefiles/berkeley-softfloat-3 $SOURCE_DIR/subprojects/packagefiles/berkeley-testfloat-3
         wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-softfloat-3/meson.build -O $SOURCE_DIR/subprojects/packagefiles/berkeley-softfloat-3/meson.build
